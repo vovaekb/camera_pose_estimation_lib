@@ -27,6 +27,12 @@ namespace cpp_practicing {
 
     namespace {
 
+        /**
+         * @brief Calculate MAE (mean absolute error) error for translation component between predictions pose and ground truth pose 
+         * @param[in] predictions Predicted translation vector  
+         * @param[in] targets Ground truth translation vector
+         * @return Mean absolute error
+         * */
         float mae(const std::vector<float>& predictions, const std::vector<float>& targets)
         {
             float result = 0;
@@ -44,11 +50,22 @@ namespace cpp_practicing {
             return result;
         }
 
+        /**
+         * @brief Calculate MAE (mean absolute error) error for rotation component between predictions pose and ground truth pose 
+         * @param[in] predictions Predicted rotation matrix  
+         * @param[in] targets Ground truth rotation matrix
+         * @return Mean absolute error
+         * */
         float mae(const Eigen::MatrixXf& predictions, const Eigen::MatrixXf& targets) {
             return 0.0;
         }
 
-        Eigen::MatrixXf convertQuaternionToMatrix(PoseEstimator::Rotation rotation) // float w, float x, float y, float z)
+        /**
+         * @brief Convert rotation quaternion to matrix form 
+         * @param[in] rotation Rotation quaternion  
+         * @return Matrix of rotation
+         * */
+        Eigen::MatrixXf convertQuaternionToMatrix(PoseEstimator::Rotation rotation)
         {
             auto [w, x, y, z] = rotation;
             Eigen::MatrixXf result(3, 3);
@@ -91,14 +108,6 @@ namespace cpp_practicing {
         camera_matrix(1, 1) = query_image_metadata.calibration_data.fy;
         camera_matrix(1, 2) = query_image_metadata.calibration_data.cy;
         camera_matrix(2, 2) = 1;
-
-        // for (int i = 0; i < 3; ++i) {
-        //     for (int j = 0; j < 3; ++j)
-        //     {
-        //         std::cout << camera_matrix(i, j) << " ";
-        //     }
-        //     std::cout << std::endl;
-        // }
         
         loadViewImages();
 
@@ -123,15 +132,6 @@ namespace cpp_practicing {
         auto pose_json = json_data.at("pose");
         auto origin = pose_json.at("origin");
         auto rotation_json = pose_json.at("rotation");
-        // std::vector<int> rotation_vector;
-        // rotation_vector.reserve(4);
-        // for (size_t i = 0; i < 4; ++i)
-        // {
-        //     rotation_vector.emplace_back(rotation[i]);
-        // }
-
-        // PoseEstimator::Rotation rotation = rotation_json;
-
 
         PoseEstimator::Rotation rotation = {
             rotation_json.at("w"),
@@ -145,13 +145,8 @@ namespace cpp_practicing {
         PoseEstimator::TransformPose pose = {rotation, translation}; 
 
         PoseEstimator::CalibrationData calibration_data = {fx, fy, cx, cy};
-        // std::cout << "calibration_data: " << calibration_data.fx << ", " << calibration_data.fy << " " << std::endl;
 
-        // auto calibration_data = PoseEstimator::CalibrationData{.fx = fx, .fy = fy, .cx = cx, .cy = cy};
-        // ImageMetadata result {.calibration_data = calibration_data, .pose = pose };
         query_image_metadata = ImageMetadata { calibration_data, pose };
-        // query_image_metadata.calibration_data = calibration_data;
-        // query_image_metadata.pose = pose;
     }
 
     void PoseEstimator::loadQueryImage() {
@@ -177,16 +172,9 @@ namespace cpp_practicing {
                 Mat image = imread(file_path, IMREAD_COLOR);
                 view_images.emplace_back(ImageSample {.file_name = file_name, .image_data = image}); // view_image);
 
-                auto image_size = image.size();
-                // std::cout << "image_size: " << image_size.width << " x " << image_size.height << std::endl;
-
             }
         }
 
-        // for (auto &&view : view_images)
-        // {
-        //     std::cout << "view image " << view.file_name << std::endl;
-        // }
     }
 
     void PoseEstimator::findImageDescriptors() {
@@ -194,18 +182,11 @@ namespace cpp_practicing {
         // std::cout << "Find keypoints for query image" << std::endl;
         detector->detectAndCompute(query_image.image_data, noArray(), query_image.keypoints, query_image.descriptors);
 
-        // std::cout << "query image keypoints number: " << query_image.keypoints.size() << std::endl;
-
-        // Find keypoints for view images
-        // std::cout << "Find keypoints for view images" << std::endl;
-
         for (auto &&view_img : view_images)
         {
             detector->detect(view_img.image_data, view_img.keypoints);
             detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
 
-            // std::cout << "keypoints for view image " << view_img.file_name << ": " << view_img.keypoints.size() << std::endl;
-            // std::cout << "descriptors " << view_img.descriptors.size() << std::endl;
         }
 
     }
@@ -268,7 +249,6 @@ namespace cpp_practicing {
         // Test loadImageMetadata method
         // loadImageMetadata();
     }
-    void PoseEstimator::matchTwoImages() const {}
     
     void PoseEstimator::calculateTransformation() {}
     
