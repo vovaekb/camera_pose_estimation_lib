@@ -1,6 +1,6 @@
 /**
- * @file PoseEstimator.cpp
- * @brief Class for pipeline of camera pose estimation
+ * @file PoseEstimator.h
+ * @brief Class for pipeline of the alignment pose of a rigid object in a scene
  */
 
 #include <vector>
@@ -31,6 +31,7 @@ namespace cpp_practicing {
     {
     public:
         using string_vector = std::vector<std::string>;
+        using float_vector = std::vector<float>;
         using view_matches_vector = std::vector<DMatch>;
 
         /**
@@ -71,7 +72,7 @@ namespace cpp_practicing {
             /**!< rotation matrix */
             Rotation rotation;
             /**!< translation vector */
-            std::vector<float> translation;
+            float_vector translation;
         };
 
         /**
@@ -104,9 +105,33 @@ namespace cpp_practicing {
         
         PoseEstimator(const std::string& image_file_path, const std::string& metadata_file_path, const std::string& view_files_path);
         /**
-         * @brief Start pipeline for camera pose estimation 
+         * @brief Start pipeline for the alignment pose of a rigid object in a scene 
          * */
         void estimate();
+
+        /**
+         * @brief Get keypoints for query image  
+         * @return Vector of keypoints
+         * */
+        auto getQueryImageKeypoints() const -> keypoints_vector;
+
+        /**
+         * @brief Get query image  
+         * @return Image sample
+         * */
+        auto getQueryImage() const -> ImageSample;
+
+        /**
+         * @brief Get view images 
+         * @return Vector of view images
+         * */
+        auto getViewImages() const -> std::vector<ImageSample>;
+
+        /**
+         * @brief Get metadata for query image
+         * @return Image metadata
+         * */
+        auto getQueryImageMetadata() const -> ImageMetadata;
         
     private:
         /// Query image data
@@ -123,7 +148,7 @@ namespace cpp_practicing {
         /// Camera matrix
         Eigen::Array33f camera_matrix;
         /// Result pose translation
-        std::vector<float> result_pose_translation;
+        float_vector result_pose_translation;
         /// Metadata of query image 
         ImageMetadata query_image_metadata;
         /// Query image file

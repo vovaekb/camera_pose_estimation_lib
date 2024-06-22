@@ -23,6 +23,7 @@ using namespace cv;
 
 namespace cpp_practicing {
     using string_vector = std::vector<std::string>;
+    using float_vector = std::vector<float>;
     using json = nlohmann::json;
 
     namespace {
@@ -33,10 +34,10 @@ namespace cpp_practicing {
          * @param[in] targets Ground truth translation vector
          * @return Mean absolute error
          * */
-        float mae(const std::vector<float>& predictions, const std::vector<float>& targets)
+        float mae(const float_vector& predictions, const float_vector& targets)
         {
             float result = 0;
-            std::vector<float> differences;
+            float_vector differences;
             std::transform(
                 predictions.begin(), 
                 predictions.end(), 
@@ -141,7 +142,12 @@ namespace cpp_practicing {
         };
         // std::cout << "rotation: " << rotation.w << ", " << rotation.x << " " << std::endl;
         
-        std::vector<float> translation;
+        float_vector translation;
+        translation.reserve(3);
+        for (size_t i = 0; i < 3; ++i)
+        {
+            translation.emplace_back(origin[i]);
+        }
         PoseEstimator::TransformPose pose = {rotation, translation}; 
 
         PoseEstimator::CalibrationData calibration_data = {fx, fy, cx, cy};
@@ -245,27 +251,50 @@ namespace cpp_practicing {
             std::cout << "inliers number: " << cv::sum(inliers)[0] << std::endl;
 
         }
+
+        // Find best match
+        auto best_match_index = -1;
+        auto max_inliers_number = 0;
+        for (size_t i = 0; i < view_images.size(); ++i)
+        {
+            if (views_matches_inliers[i] > max_inliers_number) {
+                max_inliers_number = views_matches_inliers[i];
+                best_match_index = i;
+            }
+        }
+        std::cout << "best_match_index: " << best_match_index << std::endl;
         
-        // Test loadImageMetadata method
-        // loadImageMetadata();
     }
     
     void PoseEstimator::calculateTransformation() {}
     
     void PoseEstimator::getPoseError() {
         auto gt_translation = query_image_metadata.pose.translation;
-        // // gt_t = np.array(gt_origin)
         // w, x, y, z
         auto gt_rotation = query_image_metadata.pose.rotation;
         auto gt_rotation_matrix = convertQuaternionToMatrix(gt_rotation);
 
-        //auto prediction_translation = result_pose.rotation;
         auto translation_error = mae(gt_translation, result_pose_translation);
-        // // print('pose error: ', t_error)
         auto rotation_error = mae(
             gt_rotation_matrix,
-            result_pose_rotation // result_pose.rotation
+            result_pose_rotation
         );
+    }
+
+    auto PoseEstimator::getQueryImageKeypoints() const -> keypoints_vector {
+        return query_image.keypoints;
+    }
+
+    auto PoseEstimator::getQueryImage() const -> ImageSample {
+        return query_image;
+    }
+
+    auto PoseEstimator::getViewImages() const -> std::vector<ImageSample> {
+        return view_images;
+    }
+
+    auto PoseEstimator::getQueryImageMetadata() const -> ImageMetadata {
+        return query_image_metadata;
     }
 
 }

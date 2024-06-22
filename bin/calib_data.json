@@ -1,8 +1,6 @@
 {
  "pose": {
-    "origin": {
-        "origin": [ 2, 10, 4 ]
-    },
+    "origin": [ 2, 10, 4 ],
     "rotation": {
         "w": 140,
         "x": 125,
