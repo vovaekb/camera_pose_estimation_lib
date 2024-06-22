@@ -92,15 +92,11 @@ namespace cpp_practicing {
             detector(SIFT::create(min_hessian)),
             matcher(cv::BFMatcher::create(cv::NORM_L2)),
             camera_matrix(Eigen::Array33f::Zero()) {
-        // detector = SIFT::create(min_hessian);
-        // matcher = cv::BFMatcher::create(cv::NORM_L2);
 
         view_images.reserve(MAX_VIEWS_NUMBER);
     }
 
     void PoseEstimator::estimate() {
-        std::cout << "run pose estimation" << std::endl;
-
         loadQueryImage();
         
         loadImageMetadata();
@@ -118,12 +114,10 @@ namespace cpp_practicing {
     }
 
     void PoseEstimator::loadImageMetadata() {
-        std::cout << "load image metadata" << std::endl;
         // load query pose
         std::ifstream ifs(m_query_metadata_file);
         json json_data = json::parse(ifs);
 
-        std::cout << "line 96" << std::endl;
         auto calibration_info = json_data.at("calibration");
         auto fx = static_cast<float>(calibration_info.at("fx"));
         auto fy = static_cast<float>(calibration_info.at("fy"));
@@ -140,7 +134,6 @@ namespace cpp_practicing {
             rotation_json.at("y"),
             rotation_json.at("z")
         };
-        // std::cout << "rotation: " << rotation.w << ", " << rotation.x << " " << std::endl;
         
         float_vector translation;
         translation.reserve(3);
@@ -156,24 +149,18 @@ namespace cpp_practicing {
     }
 
     void PoseEstimator::loadQueryImage() {
-        std::cout << "load query image" << std::endl;
-
         Mat image = imread(m_query_image_file, IMREAD_COLOR);
         query_image = ImageSample {.file_name = m_query_image_file, .image_data = image};
         auto image_size = image.size();
-        // std::cout << "image_size: " << image_size.width << " x " << image_size.height << std::endl;
     }
 
     void PoseEstimator::loadViewImages() {
-        std::cout << "load view images" << std::endl;
-
         path dir_path = m_view_files_path;
 
         for (auto& file : directory_iterator(dir_path))
         {
             auto file_path = file.path();
             auto file_name = file_path.filename();
-            // std::cout << "file " << file_path.filename() << ", " << file_path.extension() << std::endl;
             if (file_path.extension() == ".jpg" || file_path.extension() == ".png") {
                 Mat image = imread(file_path, IMREAD_COLOR);
                 view_images.emplace_back(ImageSample {.file_name = file_name, .image_data = image}); // view_image);
@@ -185,7 +172,6 @@ namespace cpp_practicing {
 
     void PoseEstimator::findImageDescriptors() {
         // Find keypoints for query image
-        // std::cout << "Find keypoints for query image" << std::endl;
         detector->detectAndCompute(query_image.image_data, noArray(), query_image.keypoints, query_image.descriptors);
 
         for (auto &&view_img : view_images)
@@ -198,16 +184,12 @@ namespace cpp_practicing {
     }
     
     void PoseEstimator::match() const {
-        std::cout << "Match keypoints for query image" << std::endl;
-
         std::vector<view_matches_vector> views_matches;
 
         for (auto &&view_img : view_images)
         {
             view_matches_vector matches;
             matcher->match(view_img.descriptors, query_image.descriptors, matches);
-            // cout << "matches number: " << knn_matches.size() << endl;
-            std::cout << "matches number: " << matches.size() << std::endl;
 
             // reject weak matches
             double min_dist = 100.0;
@@ -216,14 +198,11 @@ namespace cpp_practicing {
                 if (match.distance < min_dist)
                     min_dist = match.distance;
             }
-            // std::cout << "min_dist: " << min_dist << std::endl;
 
             matches.erase(std::remove_if(matches.begin(),
                 matches.end(), [&min_dist](const auto &match){
                     return (match.distance > 2 * min_dist);
                 }), matches.end());
-
-            std::cout << "filtered matches number: " << matches.size() << std::endl;
 
             views_matches.emplace_back(matches);
 
@@ -248,7 +227,6 @@ namespace cpp_practicing {
 
             auto inliers_number = cv::sum(inliers)[0];
             views_matches_inliers.emplace_back(inliers_number);
-            std::cout << "inliers number: " << cv::sum(inliers)[0] << std::endl;
 
         }
 
@@ -262,7 +240,6 @@ namespace cpp_practicing {
                 best_match_index = i;
             }
         }
-        std::cout << "best_match_index: " << best_match_index << std::endl;
         
     }
     
