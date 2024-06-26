@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <numeric>
+#include <chrono>
 #include <algorithm>
 #include <filesystem>
 
@@ -104,11 +105,19 @@ namespace cpp_practicing {
         //     std::cout << std::endl;
         // }
         
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
         loadViewImages();
 
         findImageDescriptors();
 
         match();
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> duration = end_time - start_time;
+
+        std::cout << "Execution time: " << duration.count() << " s." << std::endl;
     }
 
     void PoseEstimator::loadImageMetadata() {

@@ -32,6 +32,7 @@ namespace cpp_practicing {
     public:
         using string_vector = std::vector<std::string>;
         using float_vector = std::vector<float>;
+        using keypoints_vector = std::vector<cv::KeyPoint>;
         using view_matches_vector = std::vector<DMatch>;
 
         /**
@@ -103,7 +104,7 @@ namespace cpp_practicing {
             int inliers_number;
         };
         
-        PoseEstimator(const std::string& image_file_path, const std::string& metadata_file_path, const std::string& view_files_path);
+        PoseEstimator(const std::string& image_file_path, const std::string& metadata_file_path, const std::string& view_files_path, int min_hessian);
         /**
          * @brief Start pipeline for the alignment pose of a rigid object in a scene 
          * */
@@ -158,7 +159,7 @@ namespace cpp_practicing {
         /// File path to view images 
         std::string m_view_files_path;
         /// min_hessian for SIFT feature descriptor
-        int min_hessian = 400;
+        int m_min_hessian = 400;
         
         /**
          * @brief Load image metadata (intrinsic and extrinsic parameters) from file 
@@ -180,6 +181,8 @@ namespace cpp_practicing {
          * @brief Perform match between the query image and all the view images 
          * */
         void match() const;
+
+        void matchTwoImages() const;
 
         /**
          * @brief Calculate pose transformation between the query image and the best matched view image 
