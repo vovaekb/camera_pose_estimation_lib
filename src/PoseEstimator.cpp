@@ -3,6 +3,9 @@
 #include <fstream>
 #include <numeric>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <functional>
 #include <algorithm>
 #include <filesystem>
 
@@ -13,11 +16,11 @@
 #include "opencv2/features2d.hpp"
 #include "opencv2/xfeatures2d.hpp"
 #include "opencv2/calib3d/calib3d.hpp"
-
+ 
 #include <Eigen/Core>
 
 #include "PoseEstimator.h"
-
+ 
 // using fs = std::filesystem;
 using namespace std::filesystem;
 using namespace cv;
@@ -26,7 +29,7 @@ namespace cpp_practicing {
     using string_vector = std::vector<std::string>;
     using float_vector = std::vector<float>;
     using json = nlohmann::json;
-
+    
     namespace {
 
         float mae(const float_vector& predictions, const float_vector& targets)
@@ -109,9 +112,28 @@ namespace cpp_practicing {
         
         loadViewImages();
 
+        auto end_loadviews_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> load_views_duration = end_loadviews_time - start_time;
+        std::cout << "Loading views time: " << load_views_duration.count() << " s." << std::endl;
+
+        std::cout << "Calculating number of image views to process on single thread ..." << std::endl;
+        chunk_size = static_cast<int>(view_images.size() / THREADS_NUMBER);
+        std::cout << "chunk_size: " << chunk_size << std::endl;
+
         findImageDescriptors();
 
+        auto find_image_descriptors_start_time = std::chrono::high_resolution_clock::now();
+
+        auto end_find_image_descriptors_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> find_image_descriptors_duration = end_find_image_descriptors_time - find_image_descriptors_start_time;
+        // std::cout << "Calculating image descriptors time: " << find_image_descriptors_duration.count() << " s." << std::endl;
+
+        auto match_start_time = std::chrono::high_resolution_clock::now();
         match();
+
+        auto match_end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> match_duration = match_end_time - match_start_time;
+        std::cout << "Matching view images time: " << match_duration.count() << " s." << std::endl;
 
         auto end_time = std::chrono::high_resolution_clock::now();
 
@@ -121,7 +143,7 @@ namespace cpp_practicing {
     }
 
     void PoseEstimator::loadImageMetadata() {
-        std::cout << "load image metadata" << std::endl;
+        // std::cout << "load image metadata" << std::endl;
         // load query pose
         std::ifstream ifs(m_query_metadata_file);
         json json_data = json::parse(ifs);
@@ -143,7 +165,6 @@ namespace cpp_practicing {
         // }
 
         // PoseEstimator::Rotation rotation = rotation_json;
-
 
         PoseEstimator::Rotation rotation = {
             rotation_json.at("w"),
@@ -170,11 +191,11 @@ namespace cpp_practicing {
         query_image_metadata = ImageMetadata { calibration_data, pose };
         // query_image_metadata.calibration_data = calibration_data;
         // query_image_metadata.pose = pose;
-        std::cout << "translation vector size: " << query_image_metadata.pose.translation.size() << std::endl;
+        //std::cout << "translation vector size: " << query_image_metadata.pose.translation.size() << std::endl;
     }
 
     void PoseEstimator::loadQueryImage() {
-        std::cout << "load query image" << std::endl;
+        // std::cout << "load query image" << std::endl;
 
         Mat image = imread(m_query_image_file, IMREAD_COLOR);
         query_image = ImageSample {.file_name = m_query_image_file, .image_data = image};
@@ -218,22 +239,55 @@ namespace cpp_practicing {
         // Find keypoints for view images
         // std::cout << "Find keypoints for view images" << std::endl;
 
-        for (auto &&view_img : view_images)
-        {
-            detector->detect(view_img.image_data, view_img.keypoints);
-            detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
+        std::vector<std::thread> threads;
+        threads.reserve(THREADS_NUMBER);
 
-            // std::cout << "keypoints for view image " << view_img.file_name << ": " << view_img.keypoints.size() << std::endl;
-            // std::cout << "descriptors " << view_img.descriptors.size() << std::endl;
+        for (size_t i = 0; i < THREADS_NUMBER; ++i)
+        {
+            // std::cout << "Processing view images in thread: " << i << std::endl;
+            threads.emplace_back(std::thread([&](std::vector<ImageSample>& view_images, int i) {
+                auto start_index = chunk_size * i;
+                auto end_index = (i == THREADS_NUMBER - 1) ? view_images.size() : (i + 1) * chunk_size;
+                // std::cout << "start_index: " << start_index << ", end_index: " << end_index << std::endl;
+
+                std::lock_guard<std::mutex> l (m);
+                for (size_t j = start_index; j < end_index; ++j)
+                {
+                    auto &view_img = view_images[j];
+
+                    detector->detect(view_img.image_data, view_img.keypoints);
+                    detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
+                }
+                
+            }, std::ref(view_images), i));
         }
+
+        for (auto &&th : threads)
+        {
+            if (th.joinable()) {
+                th.join();
+            }
+            // std::cout << "all threads were joined" << std::endl;
+        }
+
+        // for (auto &&view_img : view_images)
+        // {
+        //     // detector->detect(view_img.image_data, view_img.keypoints);
+        //     // detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
+
+        //     std::cout << "keypoints for view image " << view_img.file_name << ": " << view_img.keypoints.size() << std::endl;
+        //     std::cout << "descriptors " << view_img.descriptors.size() << std::endl;
+        // }
 
     }
     
-    void PoseEstimator::match() const {
+    void PoseEstimator::match() {
         // std::cout << "Match keypoints for query image" << std::endl;
 
         std::vector<view_matches_vector> views_matches;
+        views_matches.reserve(view_images.size());
 
+        /*std::cout << "Sync version (not parallel)\n" << std::endl;
         for (auto &&view_img : view_images)
         {
             view_matches_vector matches;
@@ -259,6 +313,65 @@ namespace cpp_practicing {
 
             views_matches.emplace_back(matches);
 
+        }*/
+
+        // Parallel version
+
+        std::cout << "Parallel version" << std::endl;
+
+        std::vector<std::thread> threads;
+        threads.reserve(THREADS_NUMBER);
+
+        view_matches_vector matches;
+        matches.reserve(view_images.size());
+
+        for (size_t i = 0; i < THREADS_NUMBER; ++i)
+        {
+            // std::cout << "Processing view images in thread: " << i << std::endl;
+            threads.emplace_back(std::thread([&](std::vector<ImageSample>& view_images, std::vector<view_matches_vector>& views_matches, int i) {
+                auto start_index = chunk_size * i;
+                auto end_index = (i == THREADS_NUMBER - 1) ? view_images.size() : (i + 1) * chunk_size;
+                // std::cout << "start_index: " << start_index << ", end_index: " << end_index << std::endl;
+
+                std::lock_guard<std::mutex> l (m);
+                for (size_t j = start_index; j < end_index; ++j)
+                {
+                    auto &view_img = view_images[j];
+
+                    matches.clear();
+                                        
+                    matcher->match(view_img.descriptors, query_image.descriptors, matches);
+                    // std::cout << "matches number: " << matches.size() << std::endl;
+
+                    // reject weak matches
+                    double min_dist = 100.0;
+                    for (const auto& match: matches)
+                    {
+                        if (match.distance < min_dist)
+                            min_dist = match.distance;
+                    }
+                    // std::cout << "min_dist: " << min_dist << std::endl;
+
+                    matches.erase(std::remove_if(matches.begin(),
+                        matches.end(), [&min_dist](const auto &match){
+                            return (match.distance > 2 * min_dist);
+                        }), matches.end());
+
+                    // std::cout << "filtered matches number: " << matches.size() << std::endl;
+
+                    views_matches.emplace_back(matches);
+
+                }
+            }, std::ref(view_images), std::ref(views_matches), i));
+
+        }
+
+        for (auto &&th : threads)
+        {
+            if (th.joinable()) {
+                th.join();
+            }
+            // std::cout << "all threads were joined" << std::endl;
         }
 
         // calculate number of inliers using homography

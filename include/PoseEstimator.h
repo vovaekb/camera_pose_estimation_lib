@@ -23,6 +23,7 @@ namespace cpp_practicing {
     // using std::vector<view_matches>;
 
     const int MAX_VIEWS_NUMBER = 20;
+    const int THREADS_NUMBER = 3;
 
     /**
      * @brief Pipeline for camera pose estimation
@@ -143,6 +144,8 @@ namespace cpp_practicing {
         Ptr<SIFT> detector;
         /// Descriptor matcher
         Ptr<DescriptorMatcher> matcher;
+        /// mutex for processing image views in parallel
+        std::mutex m;
         // TransformPose result_pose;
         /// Result pose rotation
         Eigen::MatrixXf result_pose_rotation;
@@ -160,6 +163,8 @@ namespace cpp_practicing {
         std::string m_view_files_path;
         /// min_hessian for SIFT feature descriptor
         int m_min_hessian = 400;
+        /// number of image views to process on single thread
+        int chunk_size;
         
         /**
          * @brief Load image metadata (intrinsic and extrinsic parameters) from file 
@@ -180,7 +185,7 @@ namespace cpp_practicing {
         /**
          * @brief Perform match between the query image and all the view images 
          * */
-        void match() const;
+        void match();
 
         void matchTwoImages() const;
 
