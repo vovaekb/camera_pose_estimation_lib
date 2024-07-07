@@ -344,13 +344,11 @@ namespace cpp_practicing {
                     // std::cout << "matches number: " << matches.size() << std::endl;
 
                     // reject weak matches
-                    double min_dist = 100.0;
-                    for (const auto& match: matches)
-                    {
-                        if (match.distance < min_dist)
-                            min_dist = match.distance;
-                    }
-                    // std::cout << "min_dist: " << min_dist << std::endl;
+                    auto min_distance_match = std::min_element(matches.begin(), matches.end(), 
+                        [](const auto& first, const auto& second){ return first.distance < second.distance; }
+                    );
+                    // std::cout << "min_dist: " << min_distance_match->distance << std::endl;
+                    double min_dist = min_distance_match->distance;
 
                     matches.erase(std::remove_if(matches.begin(),
                         matches.end(), [&min_dist](const auto &match){
