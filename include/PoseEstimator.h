@@ -135,22 +135,22 @@ namespace cpp_practicing {
         
     private:
         /// Query image data
-        ImageSample query_image;
+        ImageSample m_query_image;
         /// vector of view images data
-        std::vector<ImageSample> view_images;
+        std::vector<ImageSample> m_view_images;
         /// SIFT keypoint detector and feature descriptor
-        Ptr<SIFT> detector;
+        Ptr<SIFT> m_detector;
         /// Descriptor matcher
-        Ptr<DescriptorMatcher> matcher;
+        Ptr<DescriptorMatcher> m_matcher;
         // TransformPose result_pose;
         /// Result pose rotation
-        Eigen::MatrixXf result_pose_rotation;
+        Eigen::MatrixXf m_result_pose_rotation;
         /// Camera matrix
-        Eigen::Array33f camera_matrix;
+        Eigen::Array33f m_camera_matrix;
         /// Result pose translation
-        float_vector result_pose_translation;
+        float_vector m_result_pose_translation;
         /// Metadata of query image 
-        ImageMetadata query_image_metadata;
+        ImageMetadata m_query_image_metadata;
         /// Query image file
         std::string m_query_image_file;
         /// Metadata of query image file

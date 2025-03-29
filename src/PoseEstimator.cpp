@@ -89,22 +89,22 @@ namespace cpp_practicing {
             m_query_image_file(image_file_path), 
             m_query_metadata_file(metadata_file_path),
             m_view_files_path(view_files_path), 
-            detector(SIFT::create(min_hessian)),
-            matcher(cv::BFMatcher::create(cv::NORM_L2)),
-            camera_matrix(Eigen::Array33f::Zero()) {
+            m_detector(SIFT::create(min_hessian)),
+            m_matcher(cv::BFMatcher::create(cv::NORM_L2)),
+            m_camera_matrix(Eigen::Array33f::Zero()) {
 
-        view_images.reserve(MAX_VIEWS_NUMBER);
+        m_view_images.reserve(MAX_VIEWS_NUMBER);
     }
 
     void PoseEstimator::estimate() {
         loadQueryImage();
         
         loadImageMetadata();
-        camera_matrix(0, 0) = query_image_metadata.calibration_data.fx;
-        camera_matrix(0, 2) = query_image_metadata.calibration_data.cx;
-        camera_matrix(1, 1) = query_image_metadata.calibration_data.fy;
-        camera_matrix(1, 2) = query_image_metadata.calibration_data.cy;
-        camera_matrix(2, 2) = 1;
+        m_camera_matrix(0, 0) = m_query_image_metadata.calibration_data.fx;
+        m_camera_matrix(0, 2) = m_query_image_metadata.calibration_data.cx;
+        m_camera_matrix(1, 1) = m_query_image_metadata.calibration_data.fy;
+        m_camera_matrix(1, 2) = m_query_image_metadata.calibration_data.cy;
+        m_camera_matrix(2, 2) = 1;
         
         loadViewImages();
 
@@ -141,16 +141,16 @@ namespace cpp_practicing {
         {
             translation.emplace_back(origin[i]);
         }
-        PoseEstimator::TransformPose pose = {rotation, translation}; 
+        PoseEstimator::TransformPose pose = {rotation, translation};
 
         PoseEstimator::CalibrationData calibration_data = {fx, fy, cx, cy};
 
-        query_image_metadata = ImageMetadata { calibration_data, pose };
+        m_query_image_metadata = ImageMetadata { calibration_data, pose };
     }
 
     void PoseEstimator::loadQueryImage() {
         Mat image = imread(m_query_image_file, IMREAD_COLOR);
-        query_image = ImageSample {.file_name = m_query_image_file, .image_data = image};
+        m_query_image = ImageSample {.file_name = m_query_image_file, .image_data = image};
         auto image_size = image.size();
     }
 
@@ -163,7 +163,7 @@ namespace cpp_practicing {
             auto file_name = file_path.filename();
             if (file_path.extension() == ".jpg" || file_path.extension() == ".png") {
                 Mat image = imread(file_path, IMREAD_COLOR);
-                view_images.emplace_back(ImageSample {.file_name = file_name, .image_data = image}); // view_image);
+                m_view_images.emplace_back(ImageSample {.file_name = file_name, .image_data = image}); // view_image);
 
             }
         }
@@ -172,12 +172,12 @@ namespace cpp_practicing {
 
     void PoseEstimator::findImageDescriptors() {
         // Find keypoints for query image
-        detector->detectAndCompute(query_image.image_data, noArray(), query_image.keypoints, query_image.descriptors);
+        m_detector->detectAndCompute(m_query_image.image_data, noArray(), m_query_image.keypoints, m_query_image.descriptors);
 
-        for (auto &&view_img : view_images)
+        for (auto &&view_img : m_view_images)
         {
-            detector->detect(view_img.image_data, view_img.keypoints);
-            detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
+            m_detector->detect(view_img.image_data, view_img.keypoints);
+            m_detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
 
         }
 
@@ -186,10 +186,10 @@ namespace cpp_practicing {
     void PoseEstimator::match() const {
         std::vector<view_matches_vector> views_matches;
 
-        for (auto &&view_img : view_images)
+        for (auto &&view_img : m_view_images)
         {
             view_matches_vector matches;
-            matcher->match(view_img.descriptors, query_image.descriptors, matches);
+            m_matcher->match(view_img.descriptors, m_query_image.descriptors, matches);
 
             // reject weak matches
             double min_dist = 100.0;
@@ -210,18 +210,18 @@ namespace cpp_practicing {
 
         // TODO: calculate number of inliers using homography
         std::vector<int> views_matches_inliers;
-        views_matches_inliers.reserve(view_images.size());
+        views_matches_inliers.reserve(m_view_images.size());
 
-        for (size_t i = 0; i < view_images.size(); ++i)
+        for (size_t i = 0; i < m_view_images.size(); ++i)
         {
-            auto view_image = view_images[i];
+            auto view_image = m_view_images[i];
             Mat inliers;
             auto view_matches = views_matches[i];
             std::vector<cv::Point2d> matched_pts1, matched_pts2;
             for (auto& match : view_matches)
             {
                 matched_pts1.emplace_back(view_image.keypoints[match.queryIdx].pt);
-                matched_pts2.emplace_back(query_image.keypoints[match.trainIdx].pt);
+                matched_pts2.emplace_back(m_query_image.keypoints[match.trainIdx].pt);
             }
             Mat H = findHomography(matched_pts1, matched_pts2, cv::FM_RANSAC, 3, inliers);
 
@@ -233,7 +233,7 @@ namespace cpp_practicing {
         // Find best match
         auto best_match_index = -1;
         auto max_inliers_number = 0;
-        for (size_t i = 0; i < view_images.size(); ++i)
+        for (size_t i = 0; i < m_view_images.size(); ++i)
         {
             if (views_matches_inliers[i] > max_inliers_number) {
                 max_inliers_number = views_matches_inliers[i];
@@ -246,32 +246,32 @@ namespace cpp_practicing {
     void PoseEstimator::calculateTransformation() {}
     
     void PoseEstimator::getPoseError() {
-        auto gt_translation = query_image_metadata.pose.translation;
+        auto gt_translation = m_query_image_metadata.pose.translation;
         // w, x, y, z
-        auto gt_rotation = query_image_metadata.pose.rotation;
+        auto gt_rotation = m_query_image_metadata.pose.rotation;
         auto gt_rotation_matrix = convertQuaternionToMatrix(gt_rotation);
 
-        auto translation_error = mae(gt_translation, result_pose_translation);
+        auto translation_error = mae(gt_translation, m_result_pose_translation);
         auto rotation_error = mae(
             gt_rotation_matrix,
-            result_pose_rotation
+            m_result_pose_rotation
         );
     }
 
     auto PoseEstimator::getQueryImageKeypoints() const -> keypoints_vector {
-        return query_image.keypoints;
+        return m_query_image.keypoints;
     }
 
     auto PoseEstimator::getQueryImage() const -> ImageSample {
-        return query_image;
+        return m_query_image;
     }
 
     auto PoseEstimator::getViewImages() const -> std::vector<ImageSample> {
-        return view_images;
+        return m_view_images;
     }
 
     auto PoseEstimator::getQueryImageMetadata() const -> ImageMetadata {
-        return query_image_metadata;
+        return m_query_image_metadata;
     }
 
 }
