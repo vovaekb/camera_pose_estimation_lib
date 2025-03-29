@@ -157,17 +157,14 @@ namespace cpp_practicing {
     void PoseEstimator::loadViewImages() {
         path dir_path = m_view_files_path;
 
-        for (auto& file : directory_iterator(dir_path))
+        for (const auto& file : directory_iterator(dir_path))
         {
             auto file_path = file.path();
-            auto file_name = file_path.filename();
             if (file_path.extension() == ".jpg" || file_path.extension() == ".png") {
                 Mat image = imread(file_path, IMREAD_COLOR);
-                m_view_images.emplace_back(ImageSample {.file_name = file_name, .image_data = image}); // view_image);
-
+                m_view_images.emplace_back(ImageSample {.file_name = file_path.filename(), .image_data = image}); // view_image);
             }
         }
-
     }
 
     void PoseEstimator::findImageDescriptors() {
@@ -178,9 +175,7 @@ namespace cpp_practicing {
         {
             m_detector->detect(view_img.image_data, view_img.keypoints);
             m_detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
-
         }
-
     }
     
     void PoseEstimator::match() const {
@@ -205,7 +200,6 @@ namespace cpp_practicing {
                 }), matches.end());
 
             views_matches.emplace_back(matches);
-
         }
 
         // TODO: calculate number of inliers using homography
@@ -227,7 +221,6 @@ namespace cpp_practicing {
 
             auto inliers_number = cv::sum(inliers)[0];
             views_matches_inliers.emplace_back(inliers_number);
-
         }
 
         // Find best match
@@ -240,7 +233,6 @@ namespace cpp_practicing {
                 best_match_index = i;
             }
         }
-        
     }
     
     void PoseEstimator::calculateTransformation() {}
