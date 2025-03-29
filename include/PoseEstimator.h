@@ -4,6 +4,7 @@
  */
 
 #include <vector>
+#include <array>
 #include <filesystem>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -72,7 +73,7 @@ namespace cpp_practicing {
             /**!< rotation matrix */
             Rotation rotation;
             /**!< translation vector */
-            float_vector translation;
+            std::array<float, 3> translation;
         };
 
         /**

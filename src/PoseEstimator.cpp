@@ -135,11 +135,11 @@ namespace cpp_practicing {
             rotation_json.at("z")
         };
         
-        float_vector translation;
-        translation.reserve(3);
+        std::array<float, 3> translation;
+        translation.fill(0.0);
         for (size_t i = 0; i < 3; ++i)
         {
-            translation.emplace_back(origin[i]);
+            translation[i] = static_cast<float>(origin[i]);
         }
         PoseEstimator::TransformPose pose = {rotation, translation};
 
@@ -151,7 +151,6 @@ namespace cpp_practicing {
     void PoseEstimator::loadQueryImage() {
         Mat image = imread(m_query_image_file, IMREAD_COLOR);
         m_query_image = ImageSample {.file_name = m_query_image_file, .image_data = image};
-        auto image_size = image.size();
     }
 
     void PoseEstimator::loadViewImages() {
@@ -180,6 +179,7 @@ namespace cpp_practicing {
     
     void PoseEstimator::match() const {
         std::vector<view_matches_vector> views_matches;
+        views_matches.reserve(m_view_images.size());
 
         for (auto &&view_img : m_view_images)
         {
@@ -210,22 +210,22 @@ namespace cpp_practicing {
         {
             auto view_image = m_view_images[i];
             Mat inliers;
-            auto view_matches = views_matches[i];
+            std::vector<DMatch> view_matches = views_matches[i];
             std::vector<cv::Point2d> matched_pts1, matched_pts2;
-            for (auto& match : view_matches)
+            for (const auto& match : view_matches)
             {
                 matched_pts1.emplace_back(view_image.keypoints[match.queryIdx].pt);
                 matched_pts2.emplace_back(m_query_image.keypoints[match.trainIdx].pt);
             }
             Mat H = findHomography(matched_pts1, matched_pts2, cv::FM_RANSAC, 3, inliers);
 
-            auto inliers_number = cv::sum(inliers)[0];
+            int inliers_number = cv::sum(inliers)[0];
             views_matches_inliers.emplace_back(inliers_number);
         }
 
         // Find best match
-        auto best_match_index = -1;
-        auto max_inliers_number = 0;
+        size_t best_match_index = -1;
+        int max_inliers_number = 0;
         for (size_t i = 0; i < m_view_images.size(); ++i)
         {
             if (views_matches_inliers[i] > max_inliers_number) {
@@ -237,6 +237,7 @@ namespace cpp_practicing {
     
     void PoseEstimator::calculateTransformation() {}
     
+    // TODO: complete implementation (method should return value)
     void PoseEstimator::getPoseError() {
         auto gt_translation = m_query_image_metadata.pose.translation;
         // w, x, y, z
