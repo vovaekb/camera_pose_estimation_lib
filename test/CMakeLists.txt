@@ -8,4 +8,4 @@ target_include_directories(
 
 add_dependencies(library_test ${PROJECT_NAME})
 
-target_link_libraries(library_test PUBLIC ${PROJECT_NAME} CONAN_PKG::gtest)
+target_link_libraries(library_test PUBLIC ${PROJECT_NAME})
