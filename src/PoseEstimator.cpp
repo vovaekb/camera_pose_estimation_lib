@@ -187,16 +187,15 @@ namespace cpp_practicing {
             m_matcher->match(view_img.descriptors, m_query_image.descriptors, matches);
 
             // reject weak matches
-            double min_dist = 100.0;
             for (const auto& match: matches)
             {
-                if (match.distance < min_dist)
-                    min_dist = match.distance;
+                if (match.distance < MIN_DIST)
+                    MIN_DIST = match.distance;
             }
 
             matches.erase(std::remove_if(matches.begin(),
-                matches.end(), [&min_dist](const auto &match){
-                    return (match.distance > 2 * min_dist);
+                matches.end(), [&MIN_DIST](const auto &match){
+                    return (match.distance > 2 * MIN_DIST);
                 }), matches.end());
 
             views_matches.emplace_back(matches);

@@ -24,6 +24,7 @@ namespace cpp_practicing {
     // using std::vector<view_matches>;
 
     const int MAX_VIEWS_NUMBER = 20;
+    const double MIN_DIST = 100.0;
 
     /**
      * @brief Pipeline for camera pose estimation
