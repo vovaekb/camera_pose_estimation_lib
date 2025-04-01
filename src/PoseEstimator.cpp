@@ -170,7 +170,7 @@ namespace cpp_practicing {
         // Find keypoints for query image
         m_detector->detectAndCompute(m_query_image.image_data, noArray(), m_query_image.keypoints, m_query_image.descriptors);
 
-        for (auto &&view_img : m_view_images)
+        for (auto& view_img : m_view_images)
         {
             m_detector->detect(view_img.image_data, view_img.keypoints);
             m_detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
@@ -181,7 +181,7 @@ namespace cpp_practicing {
         std::vector<view_matches_vector> views_matches;
         views_matches.reserve(m_view_images.size());
 
-        for (auto &&view_img : m_view_images)
+        for (auto& view_img : m_view_images)
         {
             view_matches_vector matches;
             m_matcher->match(view_img.descriptors, m_query_image.descriptors, matches);
@@ -194,7 +194,7 @@ namespace cpp_practicing {
             }
 
             matches.erase(std::remove_if(matches.begin(),
-                matches.end(), [&MIN_DIST](const auto &match){
+                matches.end(), [&MIN_DIST](const auto& match){
                     return (match.distance > 2 * MIN_DIST);
                 }), matches.end());
 
