@@ -18,26 +18,21 @@ INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIRS})
 # Eigen
 find_package (Eigen3 3.3 REQUIRED NO_MODULE)
 
-# Conan
+include_directories("include")
 
-message( "CMAKE_BINARY_DIR : " ${CMAKE_BINARY_DIR} )
-include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 
-conan_basic_setup(TARGETS)
+add_library(PoseEstimator SHARED src/PoseEstimator.cpp)
 
-include_directories(${CONAN_INCLUDE_DIRS} "include")
-
-# add source files
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+add_executable(app src/main.cpp)
 
 target_link_libraries(
-        ${PROJECT_NAME} PUBLIC
+        PoseEstimator PRIVATE
         ${OpenCV_LIBS}
         Eigen3::Eigen
-        CONAN_PKG::nlohmann_json
-) 
+)
 
-# add tests
-add_subdirectory(test)
+target_link_libraries(
+        app PRIVATE
+        ${OpenCV_LIBS}
+        Eigen3::Eigen
+)
