@@ -9,7 +9,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include "opencv2/xfeatures2d.hpp"
+#include <opencv2/features2d.hpp>
 
 #include <Eigen/Dense>
 
@@ -141,7 +141,7 @@ namespace cpp_practicing {
         /// vector of view images data
         std::vector<ImageSample> view_images;
         /// SIFT keypoint detector and feature descriptor
-        Ptr<SIFT> detector;
+        Ptr<Feature2D> detector;
         /// Descriptor matcher
         Ptr<DescriptorMatcher> matcher;
         /// mutex for processing image views in parallel

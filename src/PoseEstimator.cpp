@@ -14,14 +14,12 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include "opencv2/features2d.hpp"
-#include "opencv2/xfeatures2d.hpp"
 #include "opencv2/calib3d/calib3d.hpp"
+#include <fmt/core.h>
  
 #include <Eigen/Core>
-
 #include "PoseEstimator.h"
  
-// using fs = std::filesystem;
 using namespace std::filesystem;
 using namespace cv;
 
@@ -31,41 +29,37 @@ namespace cpp_practicing {
     using json = nlohmann::json;
     
     namespace {
-
-        float mae(const float_vector& predictions, const float_vector& targets)
-        {
-            float result = 0;
+        float mae(const float_vector& predictions, const float_vector& targets) {
+            if (predictions.empty()) return 0.0f;
             float_vector differences;
+            differences.reserve(predictions.size());
             std::transform(
                 predictions.begin(), 
                 predictions.end(), 
                 targets.begin(),
-                differences.begin(),
-                [&](const auto& pred, const auto& target) {
-                    return abs(pred - target);
-                });
-            auto diff_sum = std::accumulate(differences.begin(), differences.end(), 0.0);
-            result = static_cast<float>(diff_sum / differences.size());
-            return result;
+                std::back_inserter(differences),
+                [](float pred, float target) { return std::abs(pred - target); }
+            );
+            float diff_sum = std::accumulate(differences.begin(), differences.end(), 0.0f);
+            return diff_sum / static_cast<float>(differences.size());
         }
 
-        float mae(const Eigen::MatrixXf& predictions, const Eigen::MatrixXf& targets) {
-            return 0.0;
+        float mae([[maybe_unused]] const Eigen::MatrixXf& predictions, [[maybe_unused]] const Eigen::MatrixXf& targets) {
+            return 0.0f;
         }
 
-        Eigen::MatrixXf convertQuaternionToMatrix(PoseEstimator::Rotation rotation) // float w, float x, float y, float z)
-        {
+        Eigen::MatrixXf convertQuaternionToMatrix(PoseEstimator::Rotation rotation) {
             auto [w, x, y, z] = rotation;
             Eigen::MatrixXf result(3, 3);
-            result(0, 0) = 1.0 - 2.0 * y * y - 2.0 * z * z;
-            result(0, 1) = 2.0 * x * y - 2.0 * w * z;
-            result(0, 2) = 2.0 * x * z + 2.0 * w * y;
-            result(1, 0) = 2.0 * x * y + 2.0 * w * z;
-            result(1, 1) = 1.0 - 2.0 * x * x - 2.0 * z * z;
-            result(1, 2) = 2.0 * y * z - 2.0 * w * x;
-            result(2, 0) = 2.0 * x * z - 2.0 * w * y;
-            result(2, 0) = 2.0 * y * z + 2.0 * w * x;
-            result(2, 0) = 1.0 - 2.0 * x * x - 2.0 * y * y;
+            result(0, 0) = 1.0f - 2.0f * y * y - 2.0f * z * z;
+            result(0, 1) = 2.0f * x * y - 2.0f * w * z;
+            result(0, 2) = 2.0f * x * z + 2.0f * w * y;
+            result(1, 0) = 2.0f * x * y + 2.0f * w * z;
+            result(1, 1) = 1.0f - 2.0f * x * x - 2.0f * z * z;
+            result(1, 2) = 2.0f * y * z - 2.0f * w * x;
+            result(2, 0) = 2.0f * x * z - 2.0f * w * y;
+            result(2, 1) = 2.0f * y * z + 2.0f * w * x;
+            result(2, 2) = 1.0f - 2.0f * x * x - 2.0f * y * y;
             return result;
         }
     }
@@ -79,371 +73,146 @@ namespace cpp_practicing {
             m_query_metadata_file(metadata_file_path),
             m_view_files_path(view_files_path),
             m_min_hessian(min_hessian), 
-            detector(SIFT::create(m_min_hessian)),
-            matcher(cv::BFMatcher::create(cv::NORM_L2)),
+            detector(ORB::create(m_min_hessian)),
+            matcher(cv::BFMatcher::create(cv::NORM_HAMMING)),
             camera_matrix(Eigen::Array33f::Zero()) {
-
-        std::cout << "m_min_hessian: " << m_min_hessian << std::endl;
-
         view_images.reserve(MAX_VIEWS_NUMBER);
     }
 
-    void PoseEstimator::estimate() {
-        std::cout << "run pose estimation" << std::endl;
-
+    void PoseEstimator::estimate()
+    {
+        fmt::print("start estimate ...\n");
         loadQueryImage();
-
         loadImageMetadata();
         camera_matrix(0, 0) = query_image_metadata.calibration_data.fx;
         camera_matrix(0, 2) = query_image_metadata.calibration_data.cx;
         camera_matrix(1, 1) = query_image_metadata.calibration_data.fy;
         camera_matrix(1, 2) = query_image_metadata.calibration_data.cy;
         camera_matrix(2, 2) = 1;
-
-        // for (int i = 0; i < 3; ++i) {
-        //     for (int j = 0; j < 3; ++j)
-        //     {
-        //         std::cout << camera_matrix(i, j) << " ";
-        //     }
-        //     std::cout << std::endl;
-        // }
-        
-        auto start_time = std::chrono::high_resolution_clock::now();
         
         loadViewImages();
-
-        auto end_loadviews_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> load_views_duration = end_loadviews_time - start_time;
-        std::cout << "Loading views time: " << load_views_duration.count() << " s." << std::endl;
-
-        std::cout << "Calculating number of image views to process on single thread ..." << std::endl;
         chunk_size = static_cast<int>(view_images.size() / THREADS_NUMBER);
-        std::cout << "chunk_size: " << chunk_size << std::endl;
-
         findImageDescriptors();
-
-        auto find_image_descriptors_start_time = std::chrono::high_resolution_clock::now();
-
-        auto end_find_image_descriptors_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> find_image_descriptors_duration = end_find_image_descriptors_time - find_image_descriptors_start_time;
-        // std::cout << "Calculating image descriptors time: " << find_image_descriptors_duration.count() << " s." << std::endl;
-
-        auto match_start_time = std::chrono::high_resolution_clock::now();
         match();
-
-        auto match_end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> match_duration = match_end_time - match_start_time;
-        std::cout << "Matching view images time: " << match_duration.count() << " s." << std::endl;
-
-        auto end_time = std::chrono::high_resolution_clock::now();
-
-        std::chrono::duration<double> duration = end_time - start_time;
-
-        std::cout << "Execution time: " << duration.count() << " s." << std::endl;
     }
 
-    void PoseEstimator::loadImageMetadata() {
-        // std::cout << "load image metadata" << std::endl;
-        // load query pose
+    void PoseEstimator::loadImageMetadata()
+    {
+        fmt::print("Loading image metadata ...\n");
         std::ifstream ifs(m_query_metadata_file);
         json json_data = json::parse(ifs);
-
         auto calibration_info = json_data.at("calibration");
-        auto fx = static_cast<float>(calibration_info.at("fx"));
-        auto fy = static_cast<float>(calibration_info.at("fy"));
-        auto cx = static_cast<float>(calibration_info.at("cx"));
-        auto cy = static_cast<float>(calibration_info.at("cy"));
-        // load query pose
+        float fx = calibration_info.at("fx");
+        float fy = calibration_info.at("fy");
+        float cx = calibration_info.at("cx");
+        float cy = calibration_info.at("cy");
         auto pose_json = json_data.at("pose");
         auto origin = pose_json.at("origin");
         auto rotation_json = pose_json.at("rotation");
-        // std::vector<int> rotation_vector;
-        // rotation_vector.reserve(4);
-        // for (size_t i = 0; i < 4; ++i)
-        // {
-        //     rotation_vector.emplace_back(rotation[i]);
-        // }
-
-        // PoseEstimator::Rotation rotation = rotation_json;
-
         PoseEstimator::Rotation rotation = {
             rotation_json.at("w"),
             rotation_json.at("x"),
             rotation_json.at("y"),
             rotation_json.at("z")
         };
-        // std::cout << "rotation: " << rotation.w << ", " << rotation.x << " " << std::endl;
-        
         float_vector translation;
         translation.reserve(3);
-        for (size_t i = 0; i < 3; ++i)
-        {
-            translation.emplace_back(origin[i]);
-        }
-
+        for (size_t i = 0; i < 3; ++i) translation.emplace_back(origin[i]);
         PoseEstimator::TransformPose pose = {rotation, translation}; 
-
         PoseEstimator::CalibrationData calibration_data = {fx, fy, cx, cy};
-        // std::cout << "calibration_data: " << calibration_data.fx << ", " << calibration_data.fy << " " << std::endl;
-
-        // auto calibration_data = PoseEstimator::CalibrationData{.fx = fx, .fy = fy, .cx = cx, .cy = cy};
-        // ImageMetadata result {.calibration_data = calibration_data, .pose = pose };
         query_image_metadata = ImageMetadata { calibration_data, pose };
-        // query_image_metadata.calibration_data = calibration_data;
-        // query_image_metadata.pose = pose;
-        //std::cout << "translation vector size: " << query_image_metadata.pose.translation.size() << std::endl;
     }
 
-    void PoseEstimator::loadQueryImage() {
-        // std::cout << "load query image" << std::endl;
-
+    void PoseEstimator::loadQueryImage()
+    {
+        fmt::print("Loading query image ...\n");
         Mat image = imread(m_query_image_file, IMREAD_COLOR);
-        query_image = ImageSample {.file_name = m_query_image_file, .image_data = image};
-        auto image_size = image.size();
-        // std::cout << "image_size: " << image_size.width << " x " << image_size.height << std::endl;
+        query_image = ImageSample {m_query_image_file, image, {}, {}, 0};
     }
 
-    void PoseEstimator::loadViewImages() {
-        // std::cout << "load view images" << std::endl;
-
+    void PoseEstimator::loadViewImages()
+    {
+        fmt::print("Loading view images ...\n");
         path dir_path = m_view_files_path;
-
-        for (auto& file : directory_iterator(dir_path))
-        {
+        if (!exists(dir_path)) return;
+        for (auto& file : directory_iterator(dir_path)) {
             auto file_path = file.path();
-            auto file_name = file_path.filename();
-            // std::cout << "file " << file_path.filename() << ", " << file_path.extension() << std::endl;
             if (file_path.extension() == ".jpg" || file_path.extension() == ".png") {
                 Mat image = imread(file_path, IMREAD_COLOR);
-                view_images.emplace_back(ImageSample {.file_name = file_name, .image_data = image}); // view_image);
-
-                auto image_size = image.size();
-                // std::cout << "image_size: " << image_size.width << " x " << image_size.height << std::endl;
-
+                view_images.emplace_back(ImageSample {file_path.filename().string(), image, {}, {}, 0});
             }
         }
-
-        // for (auto &&view : view_images)
-        // {
-        //     std::cout << "view image " << view.file_name << std::endl;
-        // }
     }
 
-    void PoseEstimator::findImageDescriptors() {
-        // Find keypoints for query image
-        // std::cout << "Find keypoints for query image" << std::endl;
+    void PoseEstimator::findImageDescriptors()
+    {
+        fmt::print("Looking for image descriptors ...\n");
         detector->detectAndCompute(query_image.image_data, noArray(), query_image.keypoints, query_image.descriptors);
-
-        // std::cout << "query image keypoints number: " << query_image.keypoints.size() << std::endl;
-
-        // Find keypoints for view images
-        // std::cout << "Find keypoints for view images" << std::endl;
-
         std::vector<std::thread> threads;
-        threads.reserve(THREADS_NUMBER);
-
-        for (size_t i = 0; i < THREADS_NUMBER; ++i)
-        {
-            // std::cout << "Processing view images in thread: " << i << std::endl;
-            threads.emplace_back(std::thread([&](std::vector<ImageSample>& view_images, int i) {
-                auto start_index = chunk_size * i;
-                auto end_index = (i == THREADS_NUMBER - 1) ? view_images.size() : (i + 1) * chunk_size;
-                // std::cout << "start_index: " << start_index << ", end_index: " << end_index << std::endl;
-
-                std::lock_guard<std::mutex> l (m);
-                for (size_t j = start_index; j < end_index; ++j)
-                {
-                    auto &view_img = view_images[j];
-
-                    detector->detect(view_img.image_data, view_img.keypoints);
-                    detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
+        for (size_t i = 0; i < THREADS_NUMBER; ++i) {
+            threads.emplace_back(std::thread([&](int thread_idx) {
+                int start_index = chunk_size * thread_idx;
+                int end_index = (thread_idx == THREADS_NUMBER - 1) ? static_cast<int>(view_images.size()) : (thread_idx + 1) * chunk_size;
+                for (int j = start_index; j < end_index; ++j) {
+                    std::lock_guard<std::mutex> l(m);
+                    detector->detectAndCompute(view_images[j].image_data, noArray(), view_images[j].keypoints, view_images[j].descriptors);
                 }
-                
-            }, std::ref(view_images), i));
+            }, i));
         }
-
-        for (auto &&th : threads)
-        {
-            if (th.joinable()) {
-                th.join();
-            }
-            // std::cout << "all threads were joined" << std::endl;
-        }
-
-        // for (auto &&view_img : view_images)
-        // {
-        //     // detector->detect(view_img.image_data, view_img.keypoints);
-        //     // detector->detectAndCompute(view_img.image_data, noArray(), view_img.keypoints, view_img.descriptors);
-
-        //     std::cout << "keypoints for view image " << view_img.file_name << ": " << view_img.keypoints.size() << std::endl;
-        //     std::cout << "descriptors " << view_img.descriptors.size() << std::endl;
-        // }
-
+        for (auto &th : threads) if (th.joinable()) th.join();
     }
-    
+
     void PoseEstimator::match() {
-        // std::cout << "Match keypoints for query image" << std::endl;
-
-        std::vector<view_matches_vector> views_matches;
-        views_matches.reserve(view_images.size());
-
-        /*std::cout << "Sync version (not parallel)\n" << std::endl;
-        for (auto &&view_img : view_images)
-        {
-            view_matches_vector matches;
-            matcher->match(view_img.descriptors, query_image.descriptors, matches);
-            // cout << "matches number: " << knn_matches.size() << endl;
-            // std::cout << "matches number: " << matches.size() << std::endl;
-
-            // reject weak matches
-            double min_dist = 100.0;
-            for (const auto& match: matches)
-            {
-                if (match.distance < min_dist)
-                    min_dist = match.distance;
-            }
-            // std::cout << "min_dist: " << min_dist << std::endl;
-
-            matches.erase(std::remove_if(matches.begin(),
-                matches.end(), [&min_dist](const auto &match){
-                    return (match.distance > 2 * min_dist);
-                }), matches.end());
-
-            // std::cout << "filtered matches number: " << matches.size() << std::endl;
-
-            views_matches.emplace_back(matches);
-
-        }*/
-
-        // Parallel version
-
-        std::cout << "Parallel version" << std::endl;
-
+        std::vector<view_matches_vector> views_matches(view_images.size());
         std::vector<std::thread> threads;
-        threads.reserve(THREADS_NUMBER);
-
-        view_matches_vector matches;
-        matches.reserve(view_images.size());
-
-        for (size_t i = 0; i < THREADS_NUMBER; ++i)
-        {
-            // std::cout << "Processing view images in thread: " << i << std::endl;
-            threads.emplace_back(std::thread([&](std::vector<ImageSample>& view_images, std::vector<view_matches_vector>& views_matches, int i) {
-                auto start_index = chunk_size * i;
-                auto end_index = (i == THREADS_NUMBER - 1) ? view_images.size() : (i + 1) * chunk_size;
-                // std::cout << "start_index: " << start_index << ", end_index: " << end_index << std::endl;
-
-                std::lock_guard<std::mutex> l (m);
-                for (size_t j = start_index; j < end_index; ++j)
-                {
-                    auto &view_img = view_images[j];
-
-                    matches.clear();
-                                        
-                    matcher->match(view_img.descriptors, query_image.descriptors, matches);
-                    // std::cout << "matches number: " << matches.size() << std::endl;
-
-                    // reject weak matches
-                    auto min_distance_match = std::min_element(matches.begin(), matches.end(), 
-                        [](const auto& first, const auto& second){ return first.distance < second.distance; }
-                    );
-                    // std::cout << "min_dist: " << min_distance_match->distance << std::endl;
-                    double min_dist = min_distance_match->distance;
-
-                    matches.erase(std::remove_if(matches.begin(),
-                        matches.end(), [&min_dist](const auto &match){
-                            return (match.distance > 2 * min_dist);
-                        }), matches.end());
-
-                    // std::cout << "filtered matches number: " << matches.size() << std::endl;
-
-                    views_matches.emplace_back(matches);
-
+        for (size_t i = 0; i < THREADS_NUMBER; ++i) {
+            threads.emplace_back(std::thread([&](int thread_idx) {
+                int start_index = chunk_size * thread_idx;
+                int end_index = (thread_idx == THREADS_NUMBER - 1) ? static_cast<int>(view_images.size()) : (thread_idx + 1) * chunk_size;
+                for (int j = start_index; j < end_index; ++j) {
+                    view_matches_vector local_matches;
+                    matcher->match(view_images[j].descriptors, query_image.descriptors, local_matches);
+                    if (!local_matches.empty()) {
+                        auto min_it = std::min_element(local_matches.begin(), local_matches.end(), [](const auto& a, const auto& b){ return a.distance < b.distance; });
+                        float min_dist = min_it->distance;
+                        local_matches.erase(std::remove_if(local_matches.begin(), local_matches.end(), [min_dist](const auto& m){ return m.distance > 2 * min_dist; }), local_matches.end());
+                    }
+                    std::lock_guard<std::mutex> l(m);
+                    views_matches[j] = std::move(local_matches);
                 }
-            }, std::ref(view_images), std::ref(views_matches), i));
-
+            }, i));
         }
+        for (auto &th : threads) if (th.joinable()) th.join();
 
-        for (auto &&th : threads)
-        {
-            if (th.joinable()) {
-                th.join();
+        std::vector<int> views_matches_inliers(view_images.size());
+        for (size_t i = 0; i < view_images.size(); ++i) {
+            std::vector<Point2d> pts1, pts2;
+            for (auto& match : views_matches[i]) {
+                pts1.push_back(view_images[i].keypoints[match.queryIdx].pt);
+                pts2.push_back(query_image.keypoints[match.trainIdx].pt);
             }
-            // std::cout << "all threads were joined" << std::endl;
-        }
-
-        // calculate number of inliers using homography
-        std::vector<int> views_matches_inliers;
-        views_matches_inliers.reserve(view_images.size());
-
-        for (size_t i = 0; i < view_images.size(); ++i)
-        {
-            auto view_image = view_images[i];
-            Mat inliers;
-            auto view_matches = views_matches[i];
-            std::vector<cv::Point2d> matched_pts1, matched_pts2;
-            for (auto& match : view_matches)
-            {
-                matched_pts1.emplace_back(view_image.keypoints[match.queryIdx].pt);
-                matched_pts2.emplace_back(query_image.keypoints[match.trainIdx].pt);
-            }
-            Mat H = findHomography(matched_pts1, matched_pts2, cv::FM_RANSAC, 3, inliers);
-
-            auto inliers_number = cv::sum(inliers)[0];
-            views_matches_inliers.emplace_back(inliers_number);
-            // std::cout << "inliers number: " << cv::sum(inliers)[0] << std::endl;
-
-        }
-
-        // Find best match
-        auto best_match_index = -1;
-        auto max_inliers_number = 0;
-        for (size_t i = 0; i < view_images.size(); ++i)
-        {
-            if (views_matches_inliers[i] > max_inliers_number) {
-                max_inliers_number = views_matches_inliers[i];
-                best_match_index = i;
+            if (pts1.size() >= 4) {
+                Mat inliers;
+                findHomography(pts1, pts2, RANSAC, 3, inliers);
+                views_matches_inliers[i] = static_cast<int>(cv::countNonZero(inliers));
+            } else {
+                views_matches_inliers[i] = 0;
             }
         }
-        std::cout << "best_match_index: " << best_match_index << std::endl;
-        
-        // Test loadImageMetadata method
-        // loadImageMetadata();
     }
+
     void PoseEstimator::matchTwoImages() const {}
-    
     void PoseEstimator::calculateTransformation() {}
-    
     void PoseEstimator::getPoseError() {
         auto gt_translation = query_image_metadata.pose.translation;
-        // // gt_t = np.array(gt_origin)
-        // w, x, y, z
         auto gt_rotation = query_image_metadata.pose.rotation;
         auto gt_rotation_matrix = convertQuaternionToMatrix(gt_rotation);
-
-        //auto prediction_translation = result_pose.rotation;
-        auto translation_error = mae(gt_translation, result_pose_translation);
-        // // print('pose error: ', t_error)
-        auto rotation_error = mae(
-            gt_rotation_matrix,
-            result_pose_rotation // result_pose.rotation
-        );
+        [[maybe_unused]] auto translation_error = mae(gt_translation, result_pose_translation);
+        [[maybe_unused]] auto rotation_error = mae(gt_rotation_matrix, result_pose_rotation);
     }
 
-    auto PoseEstimator::getQueryImageKeypoints() const -> keypoints_vector {
-        return query_image.keypoints;
-    }
-
-    auto PoseEstimator::getQueryImage() const -> ImageSample {
-        return query_image;
-    }
-
-    auto PoseEstimator::getViewImages() const -> std::vector<ImageSample> {
-        return view_images;
-    }
-
-    auto PoseEstimator::getQueryImageMetadata() const -> ImageMetadata {
-        return query_image_metadata;
-    }
-
+    auto PoseEstimator::getQueryImageKeypoints() const -> keypoints_vector { return query_image.keypoints; }
+    auto PoseEstimator::getQueryImage() const -> ImageSample { return query_image; }
+    auto PoseEstimator::getViewImages() const -> std::vector<ImageSample> { return view_images; }
+    auto PoseEstimator::getQueryImageMetadata() const -> ImageMetadata { return query_image_metadata; }
 }
