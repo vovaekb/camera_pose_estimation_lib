@@ -64,6 +64,23 @@ namespace cpp_practicing {
         }
     }
 
+    void testKeypointDetector(std::string_view imgPath)
+    {
+        fmt::print("testKeypointDetector called\n");
+
+        fmt::print("Loading query image ...\n");
+        Mat image = imread(static_cast<std::string>(imgPath), IMREAD_COLOR);
+        PoseEstimator::ImageSample query_image {static_cast<std::string>(imgPath), image, {}, {}, 0};
+        fmt::print("query image size: {} x {}\n", query_image.image_data.rows, query_image.image_data.cols);
+
+        int min_hessian = 500;
+        Ptr<Feature2D> detector = ORB::create(min_hessian);
+        fmt::print("Calculate image descriptors ...\n");
+        detector->detectAndCompute(query_image.image_data, noArray(), query_image.keypoints, query_image.descriptors);
+        fmt::print("Descriptors for query image calculated\n");
+        fmt::print("keypoints number: {}\n", query_image.keypoints.size());
+    }
+
     PoseEstimator::PoseEstimator(
         const std::string& image_file_path, 
         const std::string& metadata_file_path, 
@@ -72,11 +89,13 @@ namespace cpp_practicing {
             m_query_image_file(image_file_path), 
             m_query_metadata_file(metadata_file_path),
             m_view_files_path(view_files_path),
-            m_min_hessian(min_hessian), 
-            detector(ORB::create(m_min_hessian)),
+            m_min_hessian(min_hessian),
             matcher(cv::BFMatcher::create(cv::NORM_HAMMING)),
+            detector(ORB::create(m_min_hessian)),
             camera_matrix(Eigen::Array33f::Zero()) {
         view_images.reserve(MAX_VIEWS_NUMBER);
+
+        // detector = ORB::create(m_min_hessian);
     }
 
     void PoseEstimator::estimate()
@@ -135,21 +154,26 @@ namespace cpp_practicing {
         fmt::print("Loading view images ...\n");
         path dir_path = m_view_files_path;
         if (!exists(dir_path)) return;
-        for (auto& file : directory_iterator(dir_path)) {
+        for (auto& file : directory_iterator(dir_path))
+        {
             auto file_path = file.path();
             if (file_path.extension() == ".jpg" || file_path.extension() == ".png") {
                 Mat image = imread(file_path, IMREAD_COLOR);
                 view_images.emplace_back(ImageSample {file_path.filename().string(), image, {}, {}, 0});
             }
         }
+        fmt::print("Complete\n");
     }
 
     void PoseEstimator::findImageDescriptors()
     {
         fmt::print("Looking for image descriptors ...\n");
         detector->detectAndCompute(query_image.image_data, noArray(), query_image.keypoints, query_image.descriptors);
+        fmt::print("Descriptors for query image calculated\n");
+        fmt::print("keypoints number: {}\n", query_image.keypoints.size());
         std::vector<std::thread> threads;
-        for (size_t i = 0; i < THREADS_NUMBER; ++i) {
+        for (size_t i = 0; i < THREADS_NUMBER; ++i)
+        {
             threads.emplace_back(std::thread([&](int thread_idx) {
                 int start_index = chunk_size * thread_idx;
                 int end_index = (thread_idx == THREADS_NUMBER - 1) ? static_cast<int>(view_images.size()) : (thread_idx + 1) * chunk_size;
@@ -160,9 +184,12 @@ namespace cpp_practicing {
             }, i));
         }
         for (auto &th : threads) if (th.joinable()) th.join();
+        fmt::print("Complete\n");
     }
 
-    void PoseEstimator::match() {
+    void PoseEstimator::match()
+    {
+        fmt::print("Start matching ...\n");
         std::vector<view_matches_vector> views_matches(view_images.size());
         std::vector<std::thread> threads;
         for (size_t i = 0; i < THREADS_NUMBER; ++i) {

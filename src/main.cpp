@@ -11,7 +11,7 @@ using namespace cv;
 
 int main(int argc, char* argv[])
 {
-    int min_hessian = 400;
+    int min_hessian = 500; // 400;
     std::string query_image_path = "../data/query.png";
     std::string view_images_path = "../data/view_images";
     std::string metadata_path = "../data/calib_data.json";
@@ -22,4 +22,6 @@ int main(int argc, char* argv[])
         min_hessian
     );
     pose_estimator.estimate();
+
+    // cpp_practicing::testKeypointDetector(query_image_path);
 }

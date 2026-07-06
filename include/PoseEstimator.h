@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <filesystem>
+#include <string_view>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
@@ -24,6 +25,8 @@ namespace cpp_practicing {
 
     const int MAX_VIEWS_NUMBER = 20;
     const int THREADS_NUMBER = 3;
+
+    void testKeypointDetector(std::string_view imgPath);
 
     /**
      * @brief Pipeline for camera pose estimation
@@ -136,6 +139,8 @@ namespace cpp_practicing {
         auto getQueryImageMetadata() const -> ImageMetadata;
         
     private:
+        /// number of image views to process on single thread
+        int chunk_size;
         /// Query image data
         ImageSample query_image;
         /// vector of view images data
@@ -144,6 +149,8 @@ namespace cpp_practicing {
         Ptr<Feature2D> detector;
         /// Descriptor matcher
         Ptr<DescriptorMatcher> matcher;
+        /// min_hessian for SIFT feature descriptor
+        int m_min_hessian = 400;
         /// mutex for processing image views in parallel
         std::mutex m;
         // TransformPose result_pose;
@@ -161,10 +168,7 @@ namespace cpp_practicing {
         std::string m_query_metadata_file;
         /// File path to view images 
         std::string m_view_files_path;
-        /// min_hessian for SIFT feature descriptor
-        int m_min_hessian = 400;
-        /// number of image views to process on single thread
-        int chunk_size;
+
         
         /**
          * @brief Load image metadata (intrinsic and extrinsic parameters) from file 
